@@ -1,0 +1,48 @@
+# --- SEGURANÇA (CRÍTICO) ---
+# Ignora arquivos de configuração reais (onde ficam as senhas)
+src/main/resources/application.properties
+src/main/resources/application.yml
+application.properties
+application.yml
+*.env
+
+# Chaves e Certificados
+*.p12
+*.jks
+*.key
+*.pem
+
+# --- SPRING BOOT / GRADLE ---
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+!**/src/main/**/build/
+!**/src/test/**/build/
+HELP.md
+*.log
+
+# --- INTELLIJ IDEA ---
+.idea/
+*.iws
+*.iml
+*.ipr
+out/
+*.run.xml
+
+# --- ECLIPSE / STS ---
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+bin/
+
+# --- VS CODE ---
+.vscode/
+
+# --- SISTEMA OPERACIONAL (Lixo do Windows/Mac) ---
+.DS_Store
+Thumbs.db
+Desktop.ini
