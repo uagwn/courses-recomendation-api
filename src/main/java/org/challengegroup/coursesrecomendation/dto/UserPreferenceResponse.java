@@ -12,13 +12,14 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 public class UserPreferenceResponse {
+
     private Long id;
     private Long userId;
-    private List<String> languages;
-    private List<String> technologies;
-    private List<String> platforms;
+    private String languages;       // ✅ String simples
+    private String technologies;    // ✅ String simples
+    private String platforms;       // ✅ String simples
     private String level;
     private Double minimumRating;
-    private List<String> interestConcepts;
-    private boolean hasEmbedding;
+
+    private List<CourseResponse> courses; // ← só courses é List
 }

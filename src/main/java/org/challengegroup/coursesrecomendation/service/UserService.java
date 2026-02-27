@@ -1,122 +1,67 @@
 package org.challengegroup.coursesrecomendation.service;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.challengegroup.coursesrecomendation.dto.UserMeResponse;
-import org.challengegroup.coursesrecomendation.dto.UserPreferenceRequest;
-import org.challengegroup.coursesrecomendation.dto.UserPreferenceResponse;
+import org.challengegroup.coursesrecomendation.dto.*;
 import org.challengegroup.coursesrecomendation.entity.User;
 import org.challengegroup.coursesrecomendation.entity.UserPreference;
 import org.challengegroup.coursesrecomendation.exception.ResourceNotFoundException;
 import org.challengegroup.coursesrecomendation.repository.UserPreferenceRepository;
 import org.challengegroup.coursesrecomendation.repository.UserRepository;
-import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import tools.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.core.type.TypeReference;
 
-import java.util.Collections;
 import java.util.List;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class UserService {
+
     private final UserRepository userRepository;
-    private final UserPreferenceRepository preferenceRepository;
-    private final ObjectMapper objectMapper;
+    private final UserPreferenceRepository userPreferenceRepository;
+    private final PythonService pythonService;
 
-    // ─── /users/me ────────────────────────────────────────────────
+    // GET /users/me
     @Transactional(readOnly = true)
-    public UserMeResponse getMe(UserDetails userDetails) {
-        User user = findActiveUserByEmail(userDetails.getUsername());
-
-        boolean hasPreferences = preferenceRepository.existsByUserId(user.getId());
+    public UserMeResponse getMe(String email) {
+        log.info("Getting user info: {}", email);
+        User user = findUserByEmail(email);
 
         return UserMeResponse.builder()
                 .id(user.getId())
                 .name(user.getName())
                 .email(user.getEmail())
                 .role(user.getRole().name())
-                .isActive(user.getIsActive())
-                .createdAt(user.getCreatedAt())
-                .lastAccess(user.getLastAccess())
-                .hasPreferences(hasPreferences)
-                .build();
-    }
-
-    // ─── GET /users/preferences ────────────────────────────────────
-    @Transactional(readOnly = true)
-    public UserPreferenceResponse getPreferences(UserDetails userDetails) {
-        User user = findActiveUserByEmail(userDetails.getUsername());
-
-        UserPreference preference = preferenceRepository
-                .findByUserId(user.getId())
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "Preferences not found for the user: " + user.getId()
-                ));
-
-        return toResponse(preference);
-    }
-
-    // ─── POST /users/preferences ───────────────────────────────────
-    @Transactional
-    public UserPreferenceResponse createPreferences(
-            UserDetails userDetails,
-            UserPreferenceRequest request) {
-
-        User user = findActiveUserByEmail(userDetails.getUsername());
-
-        if (preferenceRepository.existsByUserId(user.getId())) {
-            throw new IllegalArgumentException(
-                    "Preferences already exists Use PUT to update."
-            );
-        }
-
-        UserPreference preference = UserPreference.builder()
-                .user(user)
-                .languages(toJson(request.getLanguages()))
-                .technologies(toJson(request.getTechnologies()))
-                .coursePlatformms(toJson(request.getPlatforms()))
-                .level(request.getLevel())
-                .minimumRating(
-                        request.getMinimumRating() != null
-                                ? request.getMinimumRating()
-                                : 4.0
+                .hasPreferences(
+                        userPreferenceRepository.existsByUserId(user.getId())
                 )
-                .interestConcepts(toJson(request.getInterestConcepts()))
                 .build();
-
-        preference = preferenceRepository.save(preference);
-        log.info("Preferences created for the user: {}", user.getId());
-
-        return toResponse(preference);
     }
 
-    // ─── PUT /users/preferences ────────────────────────────────────
+    // POST /users/preferences → salva + chama Python → retorna cursos
     @Transactional
-    public UserPreferenceResponse updatePreferences(
-            UserDetails userDetails,
+    public UserPreferenceResponse createOrUpdatePreferences(
+            String email,
             UserPreferenceRequest request) {
 
-        User user = findActiveUserByEmail(userDetails.getUsername());
+        log.info("Saving preferences for: {}", email);
+        User user = findUserByEmail(email);
 
-        UserPreference preference = preferenceRepository
+        // Busca preferência existente ou cria nova
+        UserPreference preference = userPreferenceRepository
                 .findByUserId(user.getId())
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "Preferences not found. Use POST to create."
-                ));
+                .orElse(UserPreference.builder().user(user).build());
 
+        // Atualiza campos (só atualiza o que veio preenchido)
         if (request.getLanguages() != null) {
-            preference.setLanguages(toJson(request.getLanguages()));
+            preference.setLanguages(request.getLanguages());
         }
         if (request.getTechnologies() != null) {
-            preference.setTechnologies(toJson(request.getTechnologies()));
+            preference.setTechnologies(request.getTechnologies());
         }
         if (request.getPlatforms() != null) {
-            preference.setCoursePlatformms(toJson(request.getPlatforms()));
+            preference.setPlatforms(request.getPlatforms());
         }
         if (request.getLevel() != null) {
             preference.setLevel(request.getLevel());
@@ -124,57 +69,65 @@ public class UserService {
         if (request.getMinimumRating() != null) {
             preference.setMinimumRating(request.getMinimumRating());
         }
-        if (request.getInterestConcepts() != null) {
-            preference.setInterestConcepts(toJson(request.getInterestConcepts()));
-        }
 
-        preference = preferenceRepository.save(preference);
-        log.info("Preferences succesfully updated for the user: {}", user.getId());
+        userPreferenceRepository.save(preference);
+        log.info("Preferences saved for userId: {}", user.getId());
 
-        return toResponse(preference);
+        // Chama Python e retorna cursos recomendados
+        List<CourseResponse> courses = pythonService
+                .getRecommendations(user.getId(), request);
+
+        return toResponse(preference, courses);
     }
 
-    // ─── Helpers ──────────────────────────────────────────────────
-    private User findActiveUserByEmail(String email) {
-        return userRepository
-                .findByEmailAndIsActive(email, true)
+    // GET /users/preferences → busca preferências + chama Python
+    @Transactional(readOnly = true)
+    public UserPreferenceResponse getPreferences(String email) {
+        log.info("Getting preferences for: {}", email);
+        User user = findUserByEmail(email);
+
+        UserPreference preference = userPreferenceRepository
+                .findByUserId(user.getId())
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Preferences not found for user: " + email
+                ));
+
+        // Monta request com preferências salvas para chamar Python
+        UserPreferenceRequest request = new UserPreferenceRequest();
+        request.setLanguages(preference.getLanguages());
+        request.setTechnologies(preference.getTechnologies());
+        request.setPlatforms(preference.getPlatforms());
+        request.setLevel(preference.getLevel());
+        request.setMinimumRating(preference.getMinimumRating());
+
+        // Chama Python com as preferências salvas
+        List<CourseResponse> courses = pythonService
+                .getRecommendations(user.getId(), request);
+
+        return toResponse(preference, courses);
+    }
+
+    // Helper
+    private User findUserByEmail(String email) {
+        return userRepository.findByEmail(email)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "User not found: " + email
                 ));
     }
 
-    private String toJson(List<String> list) {
-        if (list == null || list.isEmpty()) return null;
-        try {
-            return objectMapper.writeValueAsString(list);
-        } catch (Exception e) {
-            log.error("Error to serialize the list: {}", e.getMessage());
-            return null;
-        }
-    }
+    private UserPreferenceResponse toResponse(
+            UserPreference preference,
+            List<CourseResponse> courses) {
 
-    private List<String> fromJson(String json) {
-        if (json == null || json.isBlank()) return Collections.emptyList();
-        try {
-            String[] array = objectMapper.readValue(json, String[].class);
-            return List.of(array);
-        } catch (Exception e) {
-            log.error("Error to serialize JSON: {}", e.getMessage());
-            return Collections.emptyList();
-        }
-    }
-
-    private UserPreferenceResponse toResponse(UserPreference preference) {
         return UserPreferenceResponse.builder()
                 .id(preference.getId())
                 .userId(preference.getUser().getId())
-                .languages(fromJson(preference.getLanguages()))
-                .technologies(fromJson(preference.getTechnologies()))
-                .platforms(fromJson(preference.getCoursePlatformms()))
+                .languages(preference.getLanguages())
+                .technologies(preference.getTechnologies())
+                .platforms(preference.getPlatforms())
                 .level(preference.getLevel())
                 .minimumRating(preference.getMinimumRating())
-                .interestConcepts(fromJson(preference.getInterestConcepts()))
-                .hasEmbedding(preference.getPreferenceEmbedding() != null)
+                .courses(courses)
                 .build();
     }
 }

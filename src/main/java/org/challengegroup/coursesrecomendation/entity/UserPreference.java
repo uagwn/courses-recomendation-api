@@ -5,10 +5,6 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import org.hibernate.annotations.CreationTimestamp;
-import org.hibernate.annotations.UpdateTimestamp;
-
-import java.time.LocalDateTime;
 
 @Entity
 @Data
@@ -34,26 +30,12 @@ public class UserPreference {
     private String technologies;
 
     @Column(name = "platforms", columnDefinition = "TEXT")
-    private String coursePlatformms;
+    private String platforms;
 
     @Column(length = 50)
     private String level;
 
     @Column(name = "minimum_rating")
-    @Builder.Default
-    private Double minimumRating = 4.0;
+    private Double minimumRating;
 
-    @Column(name = "interest_concepts", columnDefinition = "TEXT")
-    private String interestConcepts;
-
-    @Column(name = "preference_embedding", columnDefinition = "TEXT")
-    private String preferenceEmbedding;
-
-    @CreationTimestamp
-    @Column(name = "created_at", nullable = false, updatable = false)
-    private LocalDateTime createdAt;
-
-    @UpdateTimestamp
-    @Column(name = "updated_at", nullable = false)
-    private LocalDateTime updatedAt;
 }

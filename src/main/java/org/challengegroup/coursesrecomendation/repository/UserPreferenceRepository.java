@@ -12,3 +12,4 @@ public interface UserPreferenceRepository  extends JpaRepository<UserPreference,
     Optional<UserPreference> findByUserId(Long userId);
     boolean existsByUserId(Long userId);
 }
+
